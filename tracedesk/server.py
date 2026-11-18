@@ -3,6 +3,7 @@ from flask import request,jsonify,render_template,send_file
 from image_lab.validation import Invalid
 from .storage import Storage
 from .core import decode,demo,create,edit,history,summary,png,svg
+from .morph import morph_paths,add_morph_path
 
 def install(app,root):
     store=Storage(root);app.extensions['tracedesk']=store
@@ -36,6 +37,14 @@ def install(app,root):
     @app.post('/tracedesk/drawings/<key>/history')
     def hist(key):
         b=body();return result(store.change(key,b.get('revision'),lambda p:history(p,b.get('action'))))
+    @app.post('/tracedesk/drawings/<key>/morph/preview')
+    def morph_preview(key):
+        b=body();p=store.layout(key)
+        return jsonify(morph=morph_paths(p,b.get('old_id'),b.get('new_id')))
+    @app.post('/tracedesk/drawings/<key>/morph/add')
+    def morph_add(key):
+        b=body()
+        return result(store.change(key,b.get('revision'),lambda p:add_morph_path(p,b)))
     @app.post('/tracedesk/drawings/<key>/duplicate')
     def duplicate(key):
         p=store.layout(key);p['name']+=' 副本';p['undo']=[];p['redo']=[];return result(store.save(p,dict(drawing_id=key,revision=p['revision'])))
