@@ -4,3 +4,4 @@
 :root{--accent:#265b59;--accent-soft:#e3efeb}body{background:#f1f3ef}.sidebar{background:#172d32;color:#d5e5df}.logo,.sidebar .section-cap{color:#d5e5df}.primary{background:#265b59;color:white}.heading{border-bottom:1px solid #ccd6cc}h1{letter-spacing:-1px}.photo-stage{background:#172326}.stage-corner{color:#d1ded4}button{border-radius:5px}
 
 body{font-family:system-ui,ArchiveCJK,sans-serif}
+.region-pick{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}.region-pick .field{margin:0}.region-pick small{color:var(--muted);font-size:9px}.region-targets{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.region-targets .field{margin-bottom:8px}#regionOutput .data-table{margin-top:12px}#regionOutput .tiny{margin-top:10px}

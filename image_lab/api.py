@@ -733,6 +733,16 @@ def create_api(services):
             return jsonify(apply_selection(store, assets, key, v.revision(data), data))
         return jsonify(select_bracket(store.get(key), assets, data))
 
+    @api.post('/projects/<key>/region-selection')
+    def region_selection(key):
+        from .selection import region_coverage_plan
+        return jsonify(region_coverage_plan(store.get(key), assets, body()))
+
+    @api.post('/projects/<key>/region-selection/apply')
+    def region_selection_apply(key):
+        from .selection import apply_region_selection
+        return jsonify(apply_region_selection(store, assets, key, v.revision(body()), body()))
+
     @api.post('/projects/<key>/exposure-coverage')
     def exposure_coverage(key):
         from .selection import exposure_coverage_map
