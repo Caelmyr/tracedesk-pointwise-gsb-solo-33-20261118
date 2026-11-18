@@ -127,6 +127,9 @@ class Jobs:
         job = self.get(job_id)
         if job['status'] != 'completed' or job['kind'] != 'align':
             raise v.Invalid('请选择已完成配准任务')
+        if job['details'].get('chaining') and not job['details'].get('applicable', True):
+            names = '、'.join(job['details'].get('disconnected_frames', []))
+            raise v.Conflict('存在与参考帧接不起来的照片（' + names + '），本次配准不能应用')
         key = job['project_id']
         with self.store.edit(key, revision, '应用自动配准结果') as project:
             if model.signature(project) != job['source_signature']:

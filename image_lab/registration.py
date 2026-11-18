@@ -1,6 +1,7 @@
 import time
 import cv2
 import numpy as np
+from scipy.optimize import linprog
 from .arrays import luminance, normalize
 from .geometry import warp, normalized_matrix, overlap_metrics
 from . import validation as v
@@ -122,7 +123,168 @@ def alignment_quality(reference, moving, matrix):
     return {'overlap': float(support.mean()), 'correlation': float(np.mean(a * b)), 'normalized_mae': float(np.mean(np.abs(a - b)))}
 
 
+def _translation(matrix):
+    linear = matrix[:2, :2]
+    if not np.isfinite(matrix).all() or np.abs(linear - np.eye(2)).max() > 1e-4 or abs(np.linalg.det(matrix)) < 1e-8:
+        raise v.Invalid('串接配准只接受纯平移结果')
+    return float(matrix[0, 2]), float(matrix[1, 2])
+
+
+def _pair_translation(anchor, moving, settings):
+    forced = dict(settings)
+    forced['motion'] = 'translation'
+    if forced['method'] == 'phase':
+        matrix, details = phase_align(anchor, moving)
+    elif forced['method'] == 'orb':
+        matrix, details = orb_align(anchor, moving, forced)
+    elif forced['method'] == 'ecc':
+        matrix, details = ecc_align(anchor, moving, forced)
+    else:
+        matrix, details = mtb_align(anchor, moving)
+    dx, dy = _translation(matrix)
+    return dx, dy, details
+
+
+def _trusted_edges(pairs, count, reference_index):
+    adjacency = {index: [] for index in range(count)}
+    for edge in pairs:
+        if edge['trusted']:
+            adjacency[edge['a']].append(edge['b'])
+            adjacency[edge['b']].append(edge['a'])
+    reachable = {reference_index}
+    queue = [reference_index]
+    while queue:
+        current = queue.pop()
+        for neighbor in adjacency[current]:
+            if neighbor not in reachable:
+                reachable.add(neighbor)
+                queue.append(neighbor)
+    return reachable
+
+
+def _minimax_positions(pairs, count, reference_index, reachable):
+    nodes = [index for index in range(count) if index != reference_index and index in reachable]
+    # 变量排布：先所有节点的 x，再所有节点的 y，最后是最大绝对偏差 t
+    x_column = {index: pos for pos, index in enumerate(nodes)}
+    y_column = {index: len(nodes) + pos for pos, index in enumerate(nodes)}
+    t_index = 2 * len(nodes)
+    objective = np.zeros(t_index + 1)
+    objective[t_index] = 1.
+    upper, rhs = [], []
+    edges = [edge for edge in pairs if edge['trusted'] and edge['a'] in reachable and edge['b'] in reachable]
+    positions = {reference_index: np.zeros(2)}
+    residuals = {pair_index: None for pair_index in range(len(pairs))}
+    if not edges:
+        return positions, residuals, edges
+    for edge in edges:
+        for axis, observed in enumerate(edge['shift']):
+            signs = np.zeros(t_index + 1)
+            columns = x_column if axis == 0 else y_column
+            # 配对位移约定：p_b - p_a = observed，残差 = (p_b - p_a) - observed
+            if edge['a'] != reference_index:
+                signs[columns[edge['a']]] = -1.
+            if edge['b'] != reference_index:
+                signs[columns[edge['b']]] = 1.
+            # -t <= (p_b - p_a - observed) <= t
+            signs[t_index] = -1.
+            upper.append(signs.copy())
+            rhs.append(observed)
+            reverse = -signs
+            reverse[t_index] = -1.
+            upper.append(reverse)
+            rhs.append(-observed)
+    result = linprog(objective, A_ub=np.array(upper), b_ub=np.array(rhs), bounds=[(None, None)] * t_index + [(0., None)], method='highs')
+    if not result.success:
+        raise v.Invalid('串接位移全局求解失败：' + str(result.message))
+    for index in nodes:
+        positions[index] = np.array([result.x[x_column[index]], result.x[y_column[index]]])
+    residuals = {}
+    for pair_index, edge in enumerate(pairs):
+        if not edge['trusted'] or edge['a'] not in reachable or edge['b'] not in reachable:
+            residuals[pair_index] = None
+            continue
+        residual = (positions[edge['b']] - positions[edge['a']]) - np.asarray(edge['shift'], dtype=np.float64)
+        residuals[pair_index] = {'x': float(residual[0]), 'y': float(residual[1]), 'max_abs': float(np.abs(residual).max())}
+    return positions, residuals, edges
+
+
+def chain_align_set(prepared, settings, progress=None, cancelled=None):
+    images = prepared['images']
+    count = len(images)
+    reference_index = prepared['reference_index']
+    reference = images[reference_index]
+    width, height = prepared['size']
+    if not 3 <= count <= 5:
+        raise v.Invalid('串接配准仅支持3到5张工作照片')
+    if any(image.shape != reference.shape for image in images):
+        raise v.Invalid('串接配准要求所有照片尺寸相同')
+    if max(reference.shape[:2]) > 384:
+        raise v.Invalid('串接配准仅支持最长边不超过384的工作图')
+    frames = prepared['frames']
+    pairs = []
+    total = count * (count - 1) // 2
+    done = 0
+    for a in range(count):
+        for b in range(a + 1, count):
+            if cancelled and cancelled():
+                raise InterruptedError('配准任务已取消')
+            started = time.monotonic()
+            record = {'a': a, 'b': b, 'a_frame': frames[a]['id'], 'b_frame': frames[b]['id'], 'a_name': frames[a]['name'], 'b_name': frames[b]['name'], 'shift': None, 'overlap': None, 'correlation': None, 'normalized_mae': None, 'trusted': False, 'method': settings['method'], 'reason': None, 'seconds': 0.}
+            try:
+                dx, dy, details = _pair_translation(images[a], images[b], settings)
+                matrix = np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1]], np.float64)
+                quality = alignment_quality(images[a], images[b], matrix)
+                record.update(shift=[dx, dy], overlap=quality['overlap'], correlation=quality['correlation'], normalized_mae=quality['normalized_mae'], seconds=time.monotonic() - started)
+                record['method'] = details.get('method', settings['method'])
+                if quality['overlap'] < settings['minimum_overlap']:
+                    record['reason'] = '重叠比例低于下限'
+                elif quality['correlation'] < settings['minimum_correlation']:
+                    record['reason'] = '相关性低于下限'
+                else:
+                    record['trusted'] = True
+            except (v.Invalid, cv2.error) as error:
+                record['reason'] = '单对配准失败：' + str(error)
+            pairs.append(record)
+            done += 1
+            if progress:
+                progress(.35 + .45 * done / max(total, 1), '串接配准 ' + frames[a]['name'] + ' / ' + frames[b]['name'])
+    reachable = _trusted_edges(pairs, count, reference_index)
+    positions, residuals, used_edges = _minimax_positions(pairs, count, reference_index, reachable)
+    for pair_index, residual in residuals.items():
+        pairs[pair_index]['residual'] = residual
+    used_pair_indices = {index: [] for index in range(count)}
+    for pair_index, edge in enumerate(pairs):
+        if edge['trusted'] and edge['a'] in reachable and edge['b'] in reachable:
+            used_pair_indices[edge['a']].append(pair_index)
+            used_pair_indices[edge['b']].append(pair_index)
+    result = []
+    for index, frame in enumerate(frames):
+        if cancelled and cancelled():
+            raise InterruptedError('配准任务已取消')
+        started = time.monotonic()
+        if index == reference_index:
+            matrix = np.eye(3)
+            quality = alignment_quality(reference, reference, matrix)
+            details = {'method': 'reference', 'connected': True, 'shift': [0., 0.], 'used_pairs': []}
+        elif index in reachable:
+            dx, dy = float(positions[index][0]), float(positions[index][1])
+            matrix = np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1]], np.float64)
+            quality = alignment_quality(reference, images[index], matrix)
+            details = {'method': 'chain:' + settings['method'], 'connected': True, 'shift': [dx, dy], 'used_pairs': used_pair_indices[index]}
+        else:
+            matrix = np.eye(3)
+            quality = None
+            details = {'method': 'disconnected', 'connected': False, 'shift': None, 'used_pairs': []}
+        result.append({'frame_id': frame['id'], 'name': frame['name'], 'matrix': normalized_matrix(matrix, width, height), 'pixel_matrix': matrix.tolist(), 'quality': quality, 'details': details, 'seconds': time.monotonic() - started})
+        if progress:
+            progress(.85 + .1 * (index + 1) / count, '汇总位移 ' + frame['name'])
+    disconnected = [frames[index]['name'] for index in range(count) if index not in reachable]
+    return {'frames': result, 'reference': frames[reference_index]['id'], 'size': [width, height], 'settings': settings, 'chaining': True, 'applicable': not disconnected, 'disconnected_frames': disconnected, 'pairs': pairs}
+
+
 def align_set(prepared, settings, progress=None, cancelled=None):
+    if settings.get('chaining'):
+        return chain_align_set(prepared, settings, progress, cancelled)
     images = prepared['images']
     reference_index = prepared['reference_index']
     reference = images[reference_index]

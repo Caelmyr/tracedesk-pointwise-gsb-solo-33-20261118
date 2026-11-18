@@ -132,6 +132,8 @@ def alignment_settings(body):
         'iterations': integer(body.get('iterations', 80), '迭代次数', 10, 300),
         'epsilon': number(body.get('epsilon', .0001), '收敛阈值', .000001, .01),
         'minimum_overlap': number(body.get('minimum_overlap', .2), '最小覆盖率', .05, .95),
+        'minimum_correlation': number(body.get('minimum_correlation', .5), '最低相关性', 0., .999),
+        'chaining': boolean(body.get('chaining', False), '启用串接配准'),
     }
 
 

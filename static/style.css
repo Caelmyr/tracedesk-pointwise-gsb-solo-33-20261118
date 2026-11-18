@@ -4,3 +4,4 @@
 :root{--accent:#265b59;--accent-soft:#e3efeb}body{background:#f1f3ef}.sidebar{background:#172d32;color:#d5e5df}.logo,.sidebar .section-cap{color:#d5e5df}.primary{background:#265b59;color:white}.heading{border-bottom:1px solid #ccd6cc}h1{letter-spacing:-1px}.photo-stage{background:#172326}.stage-corner{color:#d1ded4}button{border-radius:5px}
 
 body{font-family:system-ui,ArchiveCJK,sans-serif}
+.report-table{width:100%;font-size:11px;border-collapse:collapse;margin-bottom:8px}.report-table td,.report-table th{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.report-table th{font-weight:500;color:#7c8e72;background:#f4f6ee}.report-table .muted{opacity:.62}.report-table .warning{padding:2px 6px;margin:0;white-space:nowrap}
