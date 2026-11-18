@@ -94,6 +94,16 @@ def edit(p,b,image=None):
             if 'name' in b:q['name']=str(b['name'])[:80]
             if 'closed' in b:q['closed']=bool(b['closed'])
     elif action=='clear':p['paths']=[]
+    elif action=='auto_replace':
+        import uuid
+        from .vectorize import vectorize,MAX_EDGE
+        if image is None:raise Invalid('请先设置底图')
+        if max(image.shape[:2])>MAX_EDGE:raise Invalid('自动转单线仅支持最长边不超过256像素的底图')
+        result=vectorize(image,integer(b.get('threshold'),0,255,'黑白阈值'),
+                         'simple' if b.get('mode')=='simple' else 'faithful')
+        p['paths']=[dict(id=uuid.uuid4().hex,name=f'自动路径 {i+1}',
+                         points=copy.deepcopy(q['points']),closed=bool(q['closed']))
+                    for i,q in enumerate(result['paths'])]
     else:raise Invalid('未知编辑动作')
     validate(p)
 

@@ -1,8 +1,9 @@
 import io,copy
 from flask import request,jsonify,render_template,send_file
-from image_lab.validation import Invalid
+from image_lab.validation import Invalid,Conflict
 from .storage import Storage
-from .core import decode,demo,create,edit,history,summary,png,svg
+from .core import decode,demo,create,edit,history,summary,png,svg,integer
+from .vectorize import mask_png,vectorize
 
 def install(app,root):
     store=Storage(root);app.extensions['tracedesk']=store
@@ -11,6 +12,11 @@ def install(app,root):
         if not isinstance(b,dict):raise Invalid('请求需为JSON对象')
         return b
     def result(p):return jsonify(drawing=p,summary=summary(p))
+    def check_preview(key,b):
+        p=store.layout(key)
+        if b.get('revision')!=p['revision']:raise Conflict('图稿已被修改，请重新生成预览')
+        if not p.get('image_id'):raise Invalid('请先设置底图')
+        return p
     @app.get('/')
     def page():return render_template('tracedesk.html')
     @app.get('/tracedesk/state')
@@ -24,6 +30,27 @@ def install(app,root):
         return jsonify(image=store.save_image(f.filename,decode(f.read())))
     @app.get('/tracedesk/images/<key>.png')
     def image(key):return send_file(io.BytesIO(png(store.image(key)[1])),mimetype='image/png')
+    @app.post('/tracedesk/drawings/<key>/auto-mask')
+    def auto_mask(key):
+        b=body();p=check_preview(key,b);im=store.image(p['image_id'])[1]
+        return send_file(io.BytesIO(mask_png(im,integer(b.get('threshold',128),0,255,'黑白阈值'))),mimetype='image/png')
+    @app.post('/tracedesk/drawings/<key>/auto-preview')
+    def auto_preview(key):
+        b=body();p=check_preview(key,b);im=store.image(p['image_id'])[1]
+        mode='simple' if b.get('mode')=='simple' else 'faithful'
+        r=vectorize(im,integer(b.get('threshold',128),0,255,'黑白阈值'),mode)
+        return jsonify(preview=dict(paths=r['paths'],removed_tips=r['removed_tips'],
+                                    mode=mode,image_id=p['image_id'],revision=p['revision'],
+                                    path_count=len(r['paths']),
+                                    closed_count=sum(q['closed'] for q in r['paths']),
+                                    node_count=sum(len(q['points']) for q in r['paths']),
+                                    ink_pixels=r['ink_pixels']))
+    @app.post('/tracedesk/drawings/<key>/auto-apply')
+    def auto_apply(key):
+        b=body();b['action']='auto_replace'
+        image_id=b.get('image_id') or store.layout(key).get('image_id')
+        im=store.image(image_id)[1] if image_id else None
+        return result(store.change(key,b.get('revision'),lambda p:edit(p,b,im)))
     @app.post('/tracedesk/drawings')
     def new():
         b=body();return result(store.save(create(b.get('name','新图稿'),b.get('width',256),b.get('height',192)),dict(manual=True)))
