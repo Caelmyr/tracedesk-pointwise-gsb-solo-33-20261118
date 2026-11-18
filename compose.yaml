@@ -1,0 +1,11 @@
+services:
+  tracedesk:
+    build: .
+    image: solo36-tracedesk:1.0
+    ports: ["18936:18936"]
+    environment:
+      TRACE_DATA_DIR: /data
+    volumes: ["tracedesk-data:/data"]
+    network_mode: bridge
+volumes:
+  tracedesk-data:
