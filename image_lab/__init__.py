@@ -11,6 +11,7 @@ from .profiles import Profiles
 from .regions import Regions
 from .api import create_api
 from .validation import Invalid, Conflict
+from .stains import Stains
 
 
 def create_app(data_dir=None):
@@ -23,6 +24,7 @@ def create_app(data_dir=None):
     results = Results(store, assets)
     services = {'store': store, 'assets': assets, 'frames': Frames(store, assets), 'masks': Masks(store, assets), 'results': results, 'jobs': Jobs(store, assets, results), 'profiles': Profiles(store)}
     services['regions'] = Regions(store, assets, results)
+    services['stains'] = Stains(store, assets, results)
     app.extensions.update(services)
     app.register_blueprint(create_api(services))
 

@@ -59,6 +59,7 @@ def create_api(services):
     jobs = services['jobs']
     profiles = services['profiles']
     regions = services['regions']
+    stains = services['stains']
 
     def result_fields(key, result_id=None):
         return results.fields(key, result_id, not bool(result_id))
@@ -85,7 +86,7 @@ def create_api(services):
 
     @api.get('/capabilities')
     def capabilities():
-        return jsonify({'modes': [item['key'] for item in public_workflows()], 'workflows': public_workflows(), 'alignment': ['phase', 'orb', 'ecc', 'mtb'], 'limits': {'frames': 24, 'long_edge': 1536, 'frame_pixels': 16000000, 'active_jobs': 5}, 'settings': model.project('defaults')['settings']})
+        return jsonify({'modes': [item['key'] for item in public_workflows()], 'workflows': public_workflows(), 'alignment': ['phase', 'orb', 'ecc', 'mtb'], 'limits': {'frames': 24, 'long_edge': 1536, 'frame_pixels': 16000000, 'active_jobs': 5, 'stain_patch': {'stains': 1, 'stain_side': 64, 'image_edge': 512}}, 'settings': model.project('defaults')['settings']})
 
     @api.get('/demos')
     def demos():
@@ -514,6 +515,32 @@ def create_api(services):
         fields, _ = result_fields(key, request.args.get('result_id'))
         return image_response(regions.annotate(key, fields['image']))
 
+    @api.post('/stains/sample')
+    def stain_sample():
+        return jsonify(stains.create_sample()), 201
+
+    @api.post('/projects/<key>/stain/auto')
+    def stain_auto(key):
+        return jsonify(stains.auto(key, body()))
+
+    @api.post('/projects/<key>/stain/preview')
+    def stain_preview(key):
+        return jsonify(stains.preview(key, body()))
+
+    @api.post('/projects/<key>/stain/export')
+    def stain_export(key):
+        output = stains.export(key, body())
+        response = Response(output['png'], mimetype='image/png')
+        response.headers['Content-Disposition'] = 'attachment; filename="retouched.png"'
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-Stain-Scheme'] = output['report']['scheme_id']
+        response.headers['X-Stain-Patch'] = ','.join(str(value) for value in output['report']['patch']['bounds'])
+        response.headers['X-Stain-Worst-Edge'] = output['report']['worst_edge']
+        return response
+
+    @api.post('/projects/<key>/stain/report')
+    def stain_report(key):
+        return jsonify(stains.report(key, body()))
     @api.get('/projects/<key>/spectrum')
     def spectrum(key):
         from .spectrum import power_spectrum
