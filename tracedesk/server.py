@@ -1,8 +1,9 @@
 import io,copy
 from flask import request,jsonify,render_template,send_file
-from image_lab.validation import Invalid
+from image_lab.validation import Invalid,Conflict
 from .storage import Storage
-from .core import decode,demo,create,edit,history,summary,png,svg
+from .core import decode,demo,create,edit,history,summary,png,svg,integer
+from .planning import build_plan,plan_svg
 
 def install(app,root):
     store=Storage(root);app.extensions['tracedesk']=store
@@ -45,5 +46,18 @@ def install(app,root):
     def image_export(key):return send_file(io.BytesIO(store.render(key,request.args.get('source')=='1')),mimetype='image/png',download_name='drawing.png',as_attachment=request.args.get('download')=='1')
     @app.get('/tracedesk/drawings/<key>.svg')
     def vector(key):return send_file(io.BytesIO(svg(store.layout(key))),mimetype='image/svg+xml',download_name='drawing.svg',as_attachment=True)
+    @app.post('/tracedesk/drawings/<key>/pen-plan')
+    def pen_plan(key):
+        b=body();p=store.layout(key)
+        revision=integer(b.get('revision'),0,10**9,'修订号')
+        if revision!=p['revision']:raise Conflict('图稿已修改，请刷新后重新预览走笔安排')
+        return jsonify(plan=build_plan(p,revision),summary=summary(p))
+    @app.get('/tracedesk/drawings/<key>/pen-plan.svg')
+    def pen_plan_svg(key):
+        p=store.layout(key)
+        revision=integer(request.args.get('revision'),0,10**9,'修订号')
+        if revision!=p['revision']:raise Conflict('图稿已修改，请先重新预览走笔安排再下载')
+        plan=build_plan(p,revision)
+        return send_file(io.BytesIO(plan_svg(p,plan)),mimetype='image/svg+xml',download_name='drawing-pen-plan.svg',as_attachment=True)
     @app.get('/tracedesk/drawings/<key>.zip')
     def archive(key):return send_file(io.BytesIO(store.export(key)),mimetype='application/zip',download_name='tracedesk.zip',as_attachment=True)
