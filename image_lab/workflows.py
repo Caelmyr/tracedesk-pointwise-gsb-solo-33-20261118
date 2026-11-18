@@ -162,6 +162,11 @@ def _trails(prepared, settings, progress, cancelled):
     return combine(prepared, settings['trails'])
 
 
+def _single_trail(prepared, settings, progress, cancelled):
+    from .single_trail import combine
+    return combine(prepared, settings['single_trail'])
+
+
 def _drizzle(prepared, settings, progress, cancelled):
     from .drizzle import reconstruct
     return reconstruct(prepared, settings['drizzle'], progress, cancelled)
@@ -178,5 +183,6 @@ register(Workflow('focus', '景深堆栈', '按局部清晰度融合不同焦点
 register(Workflow('denoise', '多帧降噪', '在配准序列中平均、取中值或剔除离群值。', 'denoise', _denoise, builtin=True))
 register(Workflow('panorama', '平面全景拼接', '扩展画布，进行增益补偿与接缝融合。', 'panorama', _panorama, prepare_aligned=False, allow_flow=False, allow_common_crop=False, builtin=True))
 register(Workflow('trails', '光轨与时序合成', '合并亮色或暗色轨迹，可按帧顺序渐隐。', 'trails', _trails, allow_flow=False, builtin=True))
+register(Workflow('single_trail', '单车灯光轨跟踪', '从第二张点选的亮斑出发只跟踪一条光轨，按中心位移与漏帧规则选路，仅叠加选中亮斑。', 'single_trail', _single_trail, minimum_frames=4, prepare_aligned=True, allow_flow=False, allow_common_crop=False, builtin=True))
 register(Workflow('drizzle', '亚像素重建', '工作像素前向投影；需要真实亚像素采样。', 'drizzle', _drizzle, prepare_aligned=False, allow_flow=False, allow_common_crop=False, builtin=True))
 register(Workflow('reference', '参考帧后期', '对参考帧应用校正与后期，建立处理基线。', 'finishing', _reference, builtin=True))

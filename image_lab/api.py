@@ -85,7 +85,8 @@ def create_api(services):
 
     @api.get('/capabilities')
     def capabilities():
-        return jsonify({'modes': [item['key'] for item in public_workflows()], 'workflows': public_workflows(), 'alignment': ['phase', 'orb', 'ecc', 'mtb'], 'limits': {'frames': 24, 'long_edge': 1536, 'frame_pixels': 16000000, 'active_jobs': 5}, 'settings': model.project('defaults')['settings']})
+        from .single_trail import LIMITS as trail_limits
+        return jsonify({'modes': [item['key'] for item in public_workflows()], 'workflows': public_workflows(), 'alignment': ['phase', 'orb', 'ecc', 'mtb'], 'limits': {'frames': 24, 'long_edge': 1536, 'frame_pixels': 16000000, 'active_jobs': 5, 'single_trail': trail_limits}, 'settings': model.project('defaults')['settings']})
 
     @api.get('/demos')
     def demos():
@@ -584,6 +585,33 @@ def create_api(services):
         point = v.vector(data.get('point', [.5, .5]), '归一化采样位置', 2, 0, 1)
         radius = v.integer(data.get('radius', 2), '采样半径', 0, 32)
         return jsonify(pixel_trace(prepare(store.get(key), assets), point, radius))
+
+    def _single_trail_config(project, data):
+        from .single_trail import settings as trail_settings
+        config = trail_settings(dict(project['settings']['single_trail'], **v.object_value(data, '单车灯跟踪参数')))
+        return config
+
+    @api.post('/projects/<key>/trail-blobs')
+    def trail_blobs(key):
+        from .single_trail import series_payload
+        project = store.get(key)
+        config = _single_trail_config(project, body())
+        prepared = prepare(project, assets, True)
+        return jsonify(series_payload(prepared, config))
+
+    @api.post('/projects/<key>/trail-track')
+    def trail_track(key):
+        import json as _json
+        import base64
+        from .single_trail import track_preview
+        project = store.get(key)
+        config = _single_trail_config(project, body())
+        prepared = prepare(project, assets, True)
+        raw, report = track_preview(prepared, config)
+        response = byte_image(raw)
+        payload = base64.urlsafe_b64encode(_json.dumps(report, ensure_ascii=False, allow_nan=False).encode('utf8')).decode('ascii')
+        response.headers['X-Trail-Report'] = payload
+        return response
 
     @api.post('/projects/<key>/calibrate-response')
     def calibrate_response(key):

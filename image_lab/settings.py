@@ -4,6 +4,7 @@ from . import validation as v
 from .lens import settings as lens_settings
 from .flow import settings as flow_settings
 from .trails import settings as trails_settings
+from .single_trail import settings as single_trail_settings
 from .drizzle import settings as drizzle_settings
 from .local_adjustments import adjustment_spec
 from .workflows import workflows, get_workflow
@@ -87,7 +88,7 @@ def geometry(body):
 
 def all_settings(body):
     body = v.object_value(body, '工程设置')
-    allowed = {'size', 'mode', 'alignment', 'fusion', 'hdr', 'focus', 'denoise', 'tone', 'finishing', 'calibration', 'panorama', 'geometry', 'lens', 'flow', 'trails', 'drizzle', 'local'}
+    allowed = {'size', 'mode', 'alignment', 'fusion', 'hdr', 'focus', 'denoise', 'tone', 'finishing', 'calibration', 'panorama', 'geometry', 'lens', 'flow', 'trails', 'single_trail', 'drizzle', 'local'}
     extensions = [item for item in workflows() if not item.builtin]
     allowed.update(item.settings_section for item in extensions)
     if set(body) - allowed:
@@ -98,6 +99,7 @@ def all_settings(body):
         'lens': lens_settings(body.get('lens', {})),
         'flow': flow_settings(body.get('flow', {})),
         'trails': trails_settings(body.get('trails', {})),
+        'single_trail': single_trail_settings(body.get('single_trail', {})),
         'size': v.working_size(body.get('size', 768)),
         'mode': get_workflow(body.get('mode', 'fusion')).key,
         'alignment': v.alignment_settings(body.get('alignment', {})),
