@@ -174,13 +174,19 @@ def focus_settings(body):
 
 def denoise_settings(body):
     body = object_value(body, '降噪设置')
-    return {
-        'method': choice(body.get('method', 'sigma'), '降噪方式', ['mean', 'median', 'sigma', 'trimmed', 'weighted']),
+    method = choice(body.get('method', 'sigma'), '降噪方式', ['mean', 'median', 'sigma', 'trimmed', 'weighted', 'color_consensus'])
+    settings = {
+        'method': method,
         'sigma': number(body.get('sigma', 2), '离群阈值', .5, 5),
         'iterations': integer(body.get('iterations', 2), '剔除轮数', 1, 5),
         'trim': number(body.get('trim', .15), '截尾比例', 0, .4),
         'linear': boolean(body.get('linear', True), '线性空间降噪'),
     }
+    if method == 'color_consensus':
+        settings['color_tolerance'] = integer(body.get('color_tolerance', 12), '颜色容许差值（8位RGB级数）', 0, 255)
+    elif 'color_tolerance' in body:
+        settings['color_tolerance'] = integer(body.get('color_tolerance'), '颜色容许差值（8位RGB级数）', 0, 255)
+    return settings
 
 
 def tone_settings(body):

@@ -427,8 +427,8 @@ def create_api(services):
     @api.post('/projects/<key>/diagnostic-image')
     def diagnostic_image(key):
         data = body()
-        fields, _ = result_fields(key, data.get('result_id'))
-        kind = v.choice(data.get('kind', 'clipping'), '诊断图', ['clipping', 'zebra', 'peaking', 'valid', 'before_after'])
+        fields, meta = result_fields(key, data.get('result_id'))
+        kind = v.choice(data.get('kind', 'clipping'), '诊断图', ['clipping', 'zebra', 'peaking', 'valid', 'sample_count', 'before_after'])
         if kind == 'clipping':
             image = clipping_map(fields['image'])
         elif kind == 'zebra':
@@ -437,6 +437,11 @@ def create_api(services):
             image = focus_peaking(fields['image'])
         elif kind == 'valid':
             image = composite_valid(fields['image'], fields['valid'])
+        elif kind == 'sample_count':
+            if 'sample_count' not in fields:
+                raise v.Invalid('实际取样张数图仅整组颜色一致降噪结果提供')
+            frame_total = max(len(meta.get('frame_ids', [])), 1)
+            image = visualization(fields['sample_count'] / frame_total, 'heat')
         else:
             image = split_view(fields['before_finishing'], fields['image'], v.number(data.get('fraction', .5), '分屏位置', 0, 1))
         return image_response(image)

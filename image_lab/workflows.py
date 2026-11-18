@@ -175,7 +175,7 @@ def _reference(prepared, settings, progress, cancelled):
 register(Workflow('fusion', '曝光融合', '多尺度融合曝光互补区域，输出自然的显示图。', 'fusion', _fusion, builtin=True))
 register(Workflow('hdr', 'HDR 辐射合成', '使用有效曝光合并线性辐射，再进行色调映射。', 'hdr', _hdr, minimum_frames=2, builtin=True))
 register(Workflow('focus', '景深堆栈', '按局部清晰度融合不同焦点照片；索引表示帧编号。', 'focus', _focus, builtin=True))
-register(Workflow('denoise', '多帧降噪', '在配准序列中平均、取中值或剔除离群值。', 'denoise', _denoise, builtin=True))
+register(Workflow('denoise', '多帧降噪', '在配准序列中平均、取中值、剔除离群值，或按整组颜色一致选样平均。', 'denoise', _denoise, builtin=True))
 register(Workflow('panorama', '平面全景拼接', '扩展画布，进行增益补偿与接缝融合。', 'panorama', _panorama, prepare_aligned=False, allow_flow=False, allow_common_crop=False, builtin=True))
 register(Workflow('trails', '光轨与时序合成', '合并亮色或暗色轨迹，可按帧顺序渐隐。', 'trails', _trails, allow_flow=False, builtin=True))
 register(Workflow('drizzle', '亚像素重建', '工作像素前向投影；需要真实亚像素采样。', 'drizzle', _drizzle, prepare_aligned=False, allow_flow=False, allow_common_crop=False, builtin=True))
